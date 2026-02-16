@@ -4,20 +4,15 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_ollama import ChatOllama
+from langchain_classic.retrievers.multi_query import MultiQueryRetriever
 import tempfile
-import re
 
-# -----------------------------------
-# Page Config
-# -----------------------------------
+
 st.set_page_config(page_title="Smart Document Insights", layout="wide")
+st.title("📄 Smart Document Insights — Agentic RAG")
+st.caption("Routing Agent + FAISS + Local LLM (Semantic / Multi-Query / Hybrid)")
 
-st.title("📄 Smart Document Insights — RAG")
-st.caption("Upload a PDF and ask grounded questions. Powered by FAISS + Local LLM")
 
-# -----------------------------------
-# Load LLM
-# -----------------------------------
 @st.cache_resource
 def load_llm():
     return ChatOllama(
@@ -29,30 +24,68 @@ def load_llm():
 
 llm = load_llm()
 
-# -----------------------------------
-# Session State for Chat
-# -----------------------------------
+
+def choose_strategy(query):
+
+    prompt = f"""
+Classify query complexity.
+
+Return ONLY one:
+semantic OR multi-query OR hybrid
+
+Rules:
+- semantic → simple fact
+- multi-query → compare / analyze / multi-topic
+- hybrid → technical / exact term
+
+Query: {query}
+"""
+
+    res = llm.invoke(prompt)
+    txt = res.content.lower()
+
+    if "multi" in txt:
+        return "multi-query"
+    elif "hybrid" in txt:
+        return "hybrid"
+    else:
+        return "semantic"
+
+
+
+def hybrid_search(vectorstore, query, k=6):
+
+    docs = vectorstore.similarity_search(query, k=k)
+    keywords = query.lower().split()
+
+    ranked = sorted(
+        docs,
+        key=lambda d: sum(word in d.page_content.lower() for word in keywords),
+        reverse=True
+    )
+
+    return ranked[:4]
+
+
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "vectorstore" not in st.session_state:
     st.session_state.vectorstore = None
 
-# -----------------------------------
-# PDF Upload
-# -----------------------------------
+
+
 uploaded_file = st.file_uploader("📄 Upload PDF", type="pdf")
 
 if uploaded_file:
 
     with st.spinner("Processing PDF..."):
 
-        # Save temp PDF
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(uploaded_file.read())
             pdf_path = tmp.name
 
-        # Load + Split
         loader = PyPDFLoader(pdf_path)
         docs = loader.load()
 
@@ -62,7 +95,6 @@ if uploaded_file:
         )
         chunks = splitter.split_documents(docs)
 
-        # Embed + FAISS
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         vectorstore = FAISS.from_documents(chunks, embeddings)
 
@@ -70,17 +102,14 @@ if uploaded_file:
 
     st.success(f"PDF processed — {len(chunks)} chunks indexed")
 
-# -----------------------------------
-# Chat UI
-# -----------------------------------
+
+
 if st.session_state.vectorstore:
 
-    # Show history
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
-    # User input
     query = st.chat_input("Ask something about your document...")
 
     if query:
@@ -92,20 +121,35 @@ if st.session_state.vectorstore:
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
 
-                # ---------------------------------
-                # MMR Retrieval
-                # ---------------------------------
-                docs = st.session_state.vectorstore.max_marginal_relevance_search(
+                strategy = choose_strategy(query)
+                st.caption(f"🧠 Strategy: **{strategy}**")
+
+                vectorstore = st.session_state.vectorstore
+
+              
+                if strategy == "semantic":
+                    docs = vectorstore.similarity_search(query, k=4)
+
+                elif strategy == "multi-query":
+                    retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+                    multi = MultiQueryRetriever.from_llm(retriever, llm)
+                    docs = multi.invoke(query)
+
+                elif strategy == "hybrid":
+                    docs = hybrid_search(vectorstore, query)
+
+                else:
+                    docs = vectorstore.similarity_search(query, k=4)
+
+                
+                docs = vectorstore.max_marginal_relevance_search(
                     query,
                     k=4,
                     fetch_k=12,
                     lambda_mult=0.65
                 )
 
-                if not docs:
-                    docs = st.session_state.vectorstore.similarity_search(query, k=4)
-
-                # Build Context
+             
                 context_parts = []
                 for i, doc in enumerate(docs, 1):
                     context_parts.append(f"[Source {i}]\n{doc.page_content}")
@@ -113,36 +157,33 @@ if st.session_state.vectorstore:
                 context = "\n\n---\n\n".join(context_parts)
                 context = context[:2500]
 
-                # ---------------------------------
-                # Prompt
-                # ---------------------------------
+           
                 prompt = f"""
 You are a strict document QA assistant.
 
-RULES:
+Rules:
 - Use ONLY given sources
 - If answer missing → say "Not in document"
-- Cite [Source X] for every claim
+- Cite [Source X]
 - Do not guess
 
-CONTEXT:
+Context:
 {context}
 
-QUESTION:
+Question:
 {query}
 
-ANSWER:
+Answer:
 """
 
-                # Generate
                 response = llm.invoke(prompt)
                 answer = response.content if hasattr(response, "content") else str(response)
 
                 st.write(answer)
 
-                # ---------------------------------
+                # -----------------------------------
                 # Confidence (Grounding)
-                # ---------------------------------
+                # -----------------------------------
                 answer_words = set(answer.lower().split())
                 context_lower = context.lower()
 
@@ -155,9 +196,7 @@ ANSWER:
                 st.progress(confidence / 100)
                 st.caption(f"Confidence (grounded): {confidence}%")
 
-                # ---------------------------------
-                # Sources
-                # ---------------------------------
+               
                 with st.expander("📚 Retrieved Sources"):
                     for i, d in enumerate(docs, 1):
                         st.markdown(f"**Source {i}:**")
