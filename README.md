@@ -1,98 +1,190 @@
-📄 Smart Document Insights
+# 📄 Smart Document Insights — Agentic RAG System
 
-An AI-powered system that allows users to chat with documents (PDF) using Retrieval-Augmented Generation (RAG). The application performs semantic search over document content and generates context-aware answers grounded in the uploaded file.
+> An intelligent document Q&A system powered by a local LLM routing agent that dynamically selects between FAISS vector search, DuckDuckGo web search, and Wikipedia — so you're never limited to just your uploaded document.
 
-🚀 Features
+[![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)](https://python.org)
+[![Streamlit](https://img.shields.io/badge/Streamlit-UI-red?logo=streamlit)](https://streamlit.io)
+[![Ollama](https://img.shields.io/badge/Ollama-llama3.2-black?logo=ollama)](https://ollama.com)
+[![FAISS](https://img.shields.io/badge/FAISS-Vector_Search-brightgreen)](https://github.com/facebookresearch/faiss)
+[![LangChain](https://img.shields.io/badge/LangChain-RAG-orange)](https://langchain.com)
 
-📂 Load and analyze PDF documents
+---
 
-🔍 Semantic search using embeddings
+## 🧠 How It Works
 
-🤖 Context-aware Question Answering (RAG)
+The system uses a **two-stage agentic pipeline**:
 
-⚡ Fast similarity search using FAISS vector database
+```
+User Query
+    │
+    ▼
+┌─────────────────────────────────┐
+│        Routing Agent            │
+│  Rule-based + LLM fallback      │
+└────────────┬────────────────────┘
+             │
+     ┌───────┼───────────┬──────────────┐
+     ▼       ▼           ▼              ▼
+ 📄 FAISS  🌐 DuckDuckGo  📖 Wikipedia  🔀 All Three
+ Document  Web Search     General KB    (hybrid_all)
+     │       │               │              │
+     └───────┴───────────────┴──────────────┘
+                         │
+                         ▼
+               ┌─────────────────┐
+               │  Local LLM      │
+               │  (llama3.2)     │
+               │  Grounded Answer│
+               └─────────────────┘
+```
 
-🧠 Uses HuggingFace embeddings (no training required)
+### Routing Logic
 
-🌐 Simple interactive UI with Streamlit
+| Query Type | Route | Example |
+|---|---|---|
+| About uploaded PDF | `document` | *"Summarize this file"* |
+| Current events / prices | `web_search` | *"Latest AI news today"* |
+| History / science / concepts | `wikipedia` | *"What is the French Revolution?"* |
+| Cross-source questions | `hybrid_all` | *"How does this doc relate to current trends?"* |
 
-📊 Accurate, grounded answers from document (reduces hallucination)
+---
 
-🧠 How It Works (RAG Pipeline)
+## ✨ Features
 
-PDF → Extract text
+- **🧭 Agentic Routing** — Rule-based keyword matching + LLM fallback picks the best tool per query automatically
+- **📄 PDF RAG** — Upload any PDF; it's chunked, embedded, and indexed into FAISS for fast semantic retrieval
+- **🌐 Web Search** — DuckDuckGo integration for live, current, real-world answers
+- **📖 Wikipedia** — Instant factual summaries for general knowledge queries
+- **🔀 Hybrid Mode** — Combines all three sources when a query spans document + world knowledge
+- **🎯 Three RAG Strategies** — Semantic, Multi-Query, and Hybrid keyword-boosted retrieval
+- **📊 MMR Reranking** — Maximal Marginal Relevance ensures diverse, non-redundant retrieved chunks
+- **📈 Confidence Score** — Grounding metric shows how well the answer is anchored in retrieved context
+- **💬 Multi-turn Chat** — Full conversation history with role-based chat UI
+- **🗑️ Clear Chat** — Reset conversation anytime from the sidebar
 
-Split text into small chunks
+---
 
-Convert chunks → Embeddings (vector representation)
+## 🛠️ Tech Stack
 
-Store vectors in FAISS (Vector Database)
+| Component | Technology |
+|---|---|
+| LLM | Ollama (llama3.2) — runs fully locally |
+| Embeddings | `all-MiniLM-L6-v2` via HuggingFace |
+| Vector Store | FAISS |
+| RAG Framework | LangChain + LangChain Community |
+| Web Search | DuckDuckGo (`ddgs`) |
+| General Knowledge | Wikipedia API |
+| PDF Loader | PyPDFLoader |
+| UI | Streamlit |
 
-User asks question
+---
 
-System retrieves most relevant chunks
+## 🚀 Getting Started
 
-LLM generates answer using retrieved context
+### 1. Prerequisites
 
-Flow:
-Question → Retrieval → Context Injection → Answer Generation
+- Python 3.10+
+- [Ollama](https://ollama.com) installed and running
 
-🏗️ Tech Stack
-Technology	Purpose
-Python	Core programming language
-LangChain	RAG pipeline & orchestration
-HuggingFace Embeddings	Convert text → vectors
-FAISS	Vector database for similarity search
-PyPDF	PDF text extraction
-Streamlit	Web UI for interaction
-📂 Project Structure
-rag-doc-ai/
-│── app.py              # Streamlit UI + QA
-│── ingest.py           # PDF → FAISS index creation
-│── sample.pdf          # Input document
-│── faiss_index/        # Saved vector database
-│── requirements.txt
-│── README.md
+### 2. Pull the LLM
 
-⚙️ Installation
-1. Clone repo
-git clone https://github.com/yourusername/rag-doc-ai.git
-cd rag-doc-ai
+```bash
+ollama pull llama3.2
+```
 
-2. Install dependencies
-pip install -r requirements.txt
+### 3. Clone the repo
 
+```bash
+git clone https://github.com/Dhravya285/RAG-document_insights
+cd RAG-document_insights
+```
 
-If requirements.txt not present:
+### 4. Install dependencies
 
-pip install langchain langchain-community sentence-transformers faiss-cpu pypdf streamlit
+```bash
+pip install streamlit langchain langchain-community langchain-ollama
+pip install langchain-text-splitters sentence-transformers faiss-cpu
+pip install pypdf ddgs wikipedia
+pip install "numpy<2"   # required for scipy/sklearn compatibility
+```
 
-▶️ Usage
-Step 1 — Create Vector Database
-python ingest.py
+### 5. Run the app
 
-Step 2 — Run Application
+```bash
 streamlit run app.py
+```
 
+---
 
-Open browser → http://localhost:8501
+## 📦 Project Structure
 
-📸 Example
+```
+RAG-document_insights/
+├── app.py          # Main Streamlit app — all logic lives here
+└── README.md       # This file
+```
 
-Ask:
+---
 
-What is the main topic of this document?
+## 💡 Example Queries
 
-AI responds using actual document context.
+Try these after launching the app:
 
-🎯 Applications
+| Query | Expected Route |
+|---|---|
+| `"What is quantum computing?"` | 📖 Wikipedia |
+| `"Latest AI news today"` | 🌐 Web Search |
+| `"Summarize the uploaded document"` | 📄 Document |
+| `"Who founded Microsoft?"` | 📖 Wikipedia |
+| `"Current Bitcoin price"` | 🌐 Web Search |
+| `"What does this document say about X?"` | 📄 Document |
+| `"How does this compare to industry trends?"` | 🔀 Hybrid |
 
-Chat with PDFs
+---
 
-Research paper analysis
+## ⚙️ Configuration
 
-Legal/finance document QA
+You can tweak these parameters directly in `app.py`:
 
-Knowledge base assistants
+```python
+# LLM settings
+ChatOllama(
+    model="llama3.2",     # swap with any Ollama model
+    temperature=0.0,       # 0 = deterministic
+    num_predict=600,       # max output tokens
+    num_ctx=4096           # context window
+)
 
-Enterprise document intelligence
+# Chunking
+RecursiveCharacterTextSplitter(
+    chunk_size=500,
+    chunk_overlap=60
+)
+
+# MMR reranking
+vectorstore.max_marginal_relevance_search(
+    query, k=4, fetch_k=12, lambda_mult=0.65
+)
+```
+
+---
+
+## 🔧 Troubleshooting
+
+| Error | Fix |
+|---|---|
+| `numpy` version conflicts | `pip install "numpy<2"` |
+| `No module named ddgs` | `pip uninstall duckduckgo-search && pip install ddgs` |
+| `MultiQueryRetriever` import error | Use `from langchain.retrievers.multi_query import MultiQueryRetriever` |
+| Ollama connection refused | Make sure Ollama is running: `ollama serve` |
+| Slow first query | Normal — HuggingFace model downloads on first run |
+
+---
+
+## 📄 License
+
+MIT License — free to use, modify, and distribute.
+
+---
+
+<p align="center">Built with 🦙 Ollama · ⚡ FAISS · 🔗 LangChain · 🎈 Streamlit</p>
